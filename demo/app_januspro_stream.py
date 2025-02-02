@@ -1,12 +1,8 @@
-#GW
 import datetime
 print(datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"), "Starting DeepSeek-over-Juice multi-modal demo (model=Janus-Pro-1B). Please wait...")
-VERBOSE=False
-if VERBOSE: print("before imports", datetime.datetime.now())
 last_time = datetime.datetime.now()
-#GW
 
-#GW
+# Override default warnings and messages
 import warnings
 warnings.filterwarnings("ignore")
 with warnings.catch_warnings():
@@ -16,7 +12,6 @@ from transformers.utils import logging
 logging.set_verbosity_error() 
 import os
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
-#GW 
 
 import gradio as gr
 import torch
@@ -26,193 +21,144 @@ from janus.utils.io import load_pil_images
 from PIL import Image
 
 import numpy as np
-#GW import os
 import time
-
-#GW
-import warnings
-warnings.filterwarnings("ignore")
+#import warnings
+#warnings.filterwarnings("ignore")
 import traceback
 from threading import Thread
 from transformers import (
     TextIteratorStreamer
 )
-#GW
 
 # import spaces  # Import spaces for ZeroGPU compatibility
 
-#GW
-if VERBOSE: print("after imports", datetime.datetime.now())
 this_time = datetime.datetime.now()
 print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Done importing Python packages.", "It took %.1f" % (this_time-last_time).total_seconds(),"seconds. Please wait...")
 last_time = this_time
-#GW
 
 # Load model and processor
-#GW model_path = "deepseek-ai/Janus-Pro-7B"
+# model_path = "deepseek-ai/Janus-Pro-7B"
 model_path = "deepseek-ai/Janus-Pro-1B"
 
 config = AutoConfig.from_pretrained(model_path)
 language_config = config.language_config
 language_config._attn_implementation = 'eager'
 
-#GW
-if VERBOSE: print()
-a = datetime.datetime.now()
-if VERBOSE: print("automodel before from_pretrained", a)
-#GW
-
 vl_gpt = AutoModelForCausalLM.from_pretrained(model_path,
                                              language_config=language_config,
                                              trust_remote_code=True)
 
-#GW
-b = datetime.datetime.now()
-if VERBOSE: print("automodel after from_pretrained", b, (b-a).total_seconds())
-#GW
+this_time = datetime.datetime.now()
+print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Done loading model to CPU.", "It took %.1f" % (this_time-last_time).total_seconds(),"seconds. Please wait...")
+last_time = this_time
 
 if torch.cuda.is_available():
-    #GW
-    c = datetime.datetime.now()
-    if VERBOSE: print("cuda is available", c, (c-b).total_seconds())
-    #GW
+    this_time = datetime.datetime.now()
+    print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Done determining CUDA is available.", "It took %.1f" % (this_time-last_time).total_seconds(),"seconds. Please wait...")
+    last_time = this_time
 
-    #GW vl_gpt = vl_gpt.to(torch.bfloat16).cuda()
+    # vl_gpt = vl_gpt.to(torch.bfloat16).cuda()
     vl_gpt = vl_gpt.to(torch.bfloat16)
 
-    d = datetime.datetime.now()
-    if VERBOSE: print("to blfoat16", d, (d-c).total_seconds())
+    this_time = datetime.datetime.now()
+    print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Done compressing model to bfloat16.", "It took %.1f" % (this_time-last_time).total_seconds(),"seconds. Please wait...")
+    last_time = this_time
 
     vl_gpt = vl_gpt.cuda()
 
-    e = datetime.datetime.now()
-    if VERBOSE: print("to cuda", e, (e-d).total_seconds(), (e-a).total_seconds())
-    print(e.strftime("%Y/%m/%d %H:%M:%S"), "Done initializing model.", "It took %.1f" % (e-last_time).total_seconds(),"seconds. Please wait...")
-    last_time = e
-    #GW
+    this_time = datetime.datetime.now()
+    print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Done pushing model to GPU.", "It took %.1f" % (this_time-last_time).total_seconds(),"seconds. Please wait...")
+    last_time = this_time
 
 else:
-    if VERBOSE: print("cuda is not available", datetime.datetime.now())
+    this_time = datetime.datetime.now()
+    print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Done determining CUDA is not available.", "It took %.1f" % (this_time-last_time).total_seconds(),"seconds. Please wait...")
+    last_time = this_time
 
     vl_gpt = vl_gpt.to(torch.float16)
+    
+    this_time = datetime.datetime.now()
+    print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Done compressing model to bfloat16.", "It took %.1f" % (this_time-last_time).total_seconds(),"seconds. Please wait...")
+    last_time = this_time
 
-    #GW
-    c = datetime.datetime.now()
-    if VERBOSE: print("model to float16", (c-b).total_seconds(), (c-a).total_seconds())
-    #GW
 
-# GW
-if VERBOSE: 
-    print()
-    print("processor before from_pretrained", datetime.datetime.now())
-#GW
 vl_chat_processor = VLChatProcessor.from_pretrained(model_path)
-
-if VERBOSE: print("processor after from_pretrained", datetime.datetime.now())
 
 tokenizer = vl_chat_processor.tokenizer
 cuda_device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-#GW
-if VERBOSE: print("cuda device", cuda_device, datetime.datetime.now())
 global_thread = None
 global_time = None
-#GW
 
 @torch.inference_mode()
 # @spaces.GPU(duration=120) 
 # Multimodal Understanding function
-#GW def multimodal_understanding(image, question, seed, top_p, temperature):
+# def multimodal_understanding(image, question, seed, top_p, temperature):
 def multimodal_understanding(image, question, seed, top_p, temperature,streamer, vl_gpt):
-    if VERBOSE: print("start understanding", type(streamer), datetime.datetime.now())
-#GW
 
-    # Clear CUDA cache before generating
-    torch.cuda.empty_cache()
-   
-    if VERBOSE: print("after empty cache", datetime.datetime.now())
+    try:
 
-    # set seed
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    torch.cuda.manual_seed(seed)
-    
-    conversation = [
-        {
-            "role": "<|User|>",
-            "content": f"<image_placeholder>\n{question}",
-            "images": [image],
-        },
-        {"role": "<|Assistant|>", "content": ""},
-    ]
-   
-    if VERBOSE: print("before prepare image", datetime.datetime.now())
-    pil_images = [Image.fromarray(image)]
-    prepare_inputs = vl_chat_processor(
-        conversations=conversation, images=pil_images, force_batchify=True
-    ).to(cuda_device, dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16)
-    if VERBOSE: print("after prepare image", datetime.datetime.now())
-    
-    inputs_embeds = vl_gpt.prepare_inputs_embeds(**prepare_inputs)
+        # Clear CUDA cache before generating
+        torch.cuda.empty_cache()
+       
+        # set seed
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        torch.cuda.manual_seed(seed)
+        
+        conversation = [
+            {
+                "role": "<|User|>",
+                "content": f"<image_placeholder>\n{question}",
+                "images": [image],
+            },
+            {"role": "<|Assistant|>", "content": ""},
+        ]
+       
+        pil_images = [Image.fromarray(image)]
+        prepare_inputs = vl_chat_processor(
+            conversations=conversation, images=pil_images, force_batchify=True
+        ).to(cuda_device, dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float16)
+        
+        inputs_embeds = vl_gpt.prepare_inputs_embeds(**prepare_inputs)
 
-#GW
-    if VERBOSE:
-        print("after embeds", datetime.datetime.now())
-        print("inputs=", inputs_embeds, inputs_embeds.shape)
-        print()
-    b = datetime.datetime.now()
-    if VERBOSE: print("before generate", b)
-#GW
+        outputs = vl_gpt.language_model.generate(
+            inputs_embeds=inputs_embeds,
+            attention_mask=prepare_inputs.attention_mask,
+            pad_token_id=tokenizer.eos_token_id,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            max_new_tokens=512,
+            do_sample=False if temperature == 0 else True,
+            use_cache=True,
+            temperature=temperature,
+            top_p=top_p,
+            streamer = streamer # Added streamer for streaming/async support
+        )
 
-    outputs = vl_gpt.language_model.generate(
-        inputs_embeds=inputs_embeds,
-        attention_mask=prepare_inputs.attention_mask,
-        pad_token_id=tokenizer.eos_token_id,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        max_new_tokens=512,
-        do_sample=False if temperature == 0 else True,
-        use_cache=True,
-        temperature=temperature,
-        top_p=top_p,
-#GW
-        streamer = streamer
-#GW
-    )
+        answer = tokenizer.decode(outputs[0].cpu().tolist(), skip_special_tokens=True)
+        return answer
 
-#GW
-    if VERBOSE: print("outputs=", outputs, outputs.shape)
-    a = datetime.datetime.now()
-    if VERBOSE:
-        print("after generate tokens len-", len( tokenizer.decode(outputs[0].cpu().tolist() )) , a, (a-b).total_seconds())
-        print()
-#GW
-    answer = tokenizer.decode(outputs[0].cpu().tolist(), skip_special_tokens=True)
-    if VERBOSE: print("after decode", datetime.datetime.now())
-    return answer
+    except:
+        traceback.print_exc()
 
-#GW
 def multimodal_understanding_thread(image, question, seed, top_p, temperature):
     try:
+        # Launch the decode thread with streamer
         global global_time
         global_time = datetime.datetime.now()
-        print(global_time.strftime("%Y/%m/%d %H:%M:%S"), "Preparing model for decoding the image and prompt.  Please wait...")
+        print(global_time.strftime("%Y/%m/%d %H:%M:%S"), "Preparing model, the input image, and the prompt.  Please wait...")
         tok = AutoTokenizer.from_pretrained(model_path)
-        if VERBOSE: print("after tokenzer create", datetime.datetime.now())
         streamer = TextIteratorStreamer(
             tokenizer=tok, timeout=60.0, skip_prompt=True, skip_special_tokens=True
         )
-        if VERBOSE: print("created tokenzier and streamer", type(streamer), datetime.datetime.now())
         global global_thread
         if global_thread:
-            if VERBOSE: print("killing current thread")
             try:
                 global_thread.stop()
             except:
                 traceback.print_exc()
 
-        # launch new thread
-        if VERBOSE: print("launching decode thread...")
         global_thread = Thread(target=multimodal_understanding, args=[image, question, seed, top_p, temperature, streamer, vl_gpt])
         global_thread.start()
 
@@ -229,13 +175,12 @@ def multimodal_understanding_thread(image, question, seed, top_p, temperature):
                 count += 1
                 this_time = datetime.datetime.now()
                 token_rate = count*1.0 / ( (this_time - last_time).total_seconds() )
-                print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Model is decoding! Current cecode stats: total tokens=", count, "token rate=", "%.1f" % token_rate,"...")
+                print(this_time.strftime("%Y/%m/%d %H:%M:%S"), "Model is decoding! Stats: total tokens=", count, "token rate=", "%.1f" % token_rate,"...")
 
             yield generated_text
 
     except:
         traceback.print_exc()
-#GW
 
 def generate(input_ids,
              width,
@@ -245,10 +190,8 @@ def generate(input_ids,
              cfg_weight: float = 5,
              image_token_num_per_image: int = 576,
              patch_size: int = 16):
-    if VERBOSE: print("generate top", datetime.datetime.now())
     # Clear CUDA cache before generating
     torch.cuda.empty_cache()
-    if VERBOSE: print("generate after empty cache", datetime.datetime.now())
     
     tokens = torch.zeros((parallel_size * 2, len(input_ids)), dtype=torch.int).to(cuda_device)
     for i in range(parallel_size * 2):
@@ -260,13 +203,10 @@ def generate(input_ids,
 
     pkv = None
     for i in range(image_token_num_per_image):
-        if VERBOSE: print("for loop top", i, datetime.datetime.now())
         with torch.no_grad():
-            if VERBOSE: print("before model", i, datetime.datetime.now())
             outputs = vl_gpt.language_model.model(inputs_embeds=inputs_embeds,
                                                 use_cache=True,
                                                 past_key_values=pkv)
-            if VERBOSE: print("after model", i, datetime.datetime.now())
             pkv = outputs.past_key_values
             hidden_states = outputs.last_hidden_state
             logits = vl_gpt.gen_head(hidden_states[:, -1, :])
@@ -280,12 +220,9 @@ def generate(input_ids,
 
             img_embeds = vl_gpt.prepare_gen_img_embeds(next_token)
             inputs_embeds = img_embeds.unsqueeze(dim=1)
-            if VERBOSE: print("for loop bottom", i, datetime.datetime.now())
 
-    if VERBOSE: print("before decode", datetime.datetime.now())
     patches = vl_gpt.gen_vision_model.decode_code(generated_tokens.to(dtype=torch.int),
                                                  shape=[parallel_size, 8, width // patch_size, height // patch_size])
-    if VERBOSE: print("after decode", datetime.datetime.now())
 
     return generated_tokens.to(dtype=torch.int), patches
 
@@ -341,7 +278,7 @@ def generate_image(prompt,
         
 
 # Gradio interface
-#GW with gr.Blocks() as demo:
+# with gr.Blocks() as demo:
 with gr.Blocks(analytics_enabled=False) as demo:
     gr.Markdown(value="# Multimodal Understanding")
     with gr.Row():
@@ -411,10 +348,6 @@ with gr.Blocks(analytics_enabled=False) as demo:
         outputs=image_output
     )
 
-if VERBOSE: print("before demo launch...", datetime.datetime.now())
-#GW 
-# demo.launch(share=True)
 demo.queue()
 demo.launch(server_name="0.0.0.0", server_port=7860, quiet=True)
-#GW 
 # demo.queue(concurrency_count=1, max_size=10).launch(server_name="0.0.0.0", server_port=37906, root_path="/path")
