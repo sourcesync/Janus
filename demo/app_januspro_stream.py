@@ -343,7 +343,7 @@ def generate_image(prompt,
 # Gradio interface
 #GW with gr.Blocks() as demo:
 with gr.Blocks(analytics_enabled=False) as demo:
-    gr.Markdown(value="# Multimodal Understanding: DeepSeek JanusPro1B via JUICE")
+    gr.Markdown(value="# Multimodal Understanding")
     with gr.Row():
         image_input = gr.Image()
         with gr.Column():

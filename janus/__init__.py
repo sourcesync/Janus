@@ -21,8 +21,10 @@
 # check if python version is above 3.10
 import sys
 
+verbose=False
+
 if sys.version_info >= (3, 10):
-    #GW print("Python version is above 3.10, patching the collections module.")
+    if verbose: print("Python version is above 3.10, patching the collections module.")
     # Monkey patch collections
     import collections
     import collections.abc
