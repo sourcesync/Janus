@@ -22,7 +22,7 @@
 import sys
 
 if sys.version_info >= (3, 10):
-    print("Python version is above 3.10, patching the collections module.")
+    #GW print("Python version is above 3.10, patching the collections module.")
     # Monkey patch collections
     import collections
     import collections.abc
